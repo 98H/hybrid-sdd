@@ -1,0 +1,21 @@
+# Hermes Agent configuration for Hybrid SDD.
+# Apply with `hermes config set` (shown below) or merge into ~/.hermes/config.yaml, then restart Hermes.
+#
+#   hermes config set agent.reasoning_overrides.cc/claude-opus-5-5 medium
+#   hermes config set delegation.base_url http://localhost:20128/v1
+#   hermes config set delegation.model ag/gemini-3.8-flash-high
+#   hermes config set delegation.reasoning_effort ultra
+
+agent:
+  reasoning_overrides:
+    cc/claude-opus-5-5: medium        # architect: medium reasoning
+
+delegation:                           # any delegate_task child runs on the cheap model
+  base_url: http://localhost:20128/v1 # your OpenAI-compatible endpoint (API key inherited from parent)
+  model: ag/gemini-3.8-flash-high
+  reasoning_effort: ultra
+
+# Implementer / test author / reviewer runs are NOT delegate_task children: run_phase.sh and
+# author_tests.sh start separate one-shot processes, so their output never enters the architect's
+# context. Commands live in .sdd/config.json → agent.*, e.g.:
+#   hermes chat --oneshot --yolo -Q -m ag/gemini-3.8-flash-high --reasoning ultra --query-file {PROMPT_FILE}

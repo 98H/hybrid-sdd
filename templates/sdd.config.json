@@ -1,0 +1,39 @@
+{
+  "$comment": "Hybrid SDD per-project configuration. Copy to .sdd/config.json at the repository root.",
+  "baseBranch": "main",
+  "agent": {
+    "$comment": "Shell commands used to launch one-shot model sessions. {PROMPT_FILE} is replaced by a file path.",
+    "implementer": "hermes chat --oneshot --yolo -Q -m ag/gemini-3.8-flash-high --reasoning ultra --query-file {PROMPT_FILE}",
+    "testAuthor": "hermes chat --oneshot --yolo -Q -m ag/gemini-3.8-flash-high --reasoning ultra --query-file {PROMPT_FILE}",
+    "reviewer": "hermes chat --oneshot --yolo -Q -m ag/gemini-3.8-flash-high --reasoning high --query-file {PROMPT_FILE}",
+    "timeoutSec": 3600
+  },
+  "maxAttempts": 3,
+  "acceptanceDir": "tests/acceptance",
+  "build": "npm run build",
+  "test": "npm test",
+  "acceptanceRun": "node {FILE}",
+  "failureMarkers": ["❌", "FAIL", "AssertionError", "defects across", "\"pass\": false"],
+  "regression": "",
+  "protected": [
+    ".specify/**",
+    "specs/**",
+    "tests/acceptance/**",
+    ".sdd/**",
+    "**/.env",
+    "**/*.key"
+  ],
+  "alwaysAllowed": ["package-lock.json"],
+  "highRisk": [],
+  "uiProbe": {
+    "enabled": false,
+    "baseUrl": "http://127.0.0.1:3000",
+    "pages": ["/"],
+    "viewports": [{"name": "desktop", "width": 1440, "height": 900}, {"name": "mobile", "width": 390, "height": 844, "mobile": true}],
+    "locales": [{"name": "en", "setup": ""}],
+    "minTouchTarget": 44,
+    "interactiveSelector": "button, a[href], input, select, textarea, [role=button], [tabindex]:not([tabindex='-1'])",
+    "untranslatedPattern": "",
+    "chromePath": "/usr/bin/chromium"
+  }
+}
