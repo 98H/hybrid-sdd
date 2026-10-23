@@ -60,7 +60,15 @@ Run phases in the background (e.g. `nohup … &` or a Hermes background terminal
 session never holds the implementer's output.
 
 ## 5. Retrofit an existing product
-See METHOD.md §8. Use `author_tests.sh specs/NNN-x --retrofit` (tests must PASS on current code).
+See METHOD.md §8. In short:
+```bash
+printf '001-area\tfiles and keywords\n...' > .sdd/retrofit/areas.tsv     # architect
+bash scripts/sdd/recon.sh .sdd/retrofit/areas.tsv 4                       # cheap model: inventories
+# architect writes specs/NNN-*/spec.md from .sdd/retrofit/NNN-*.inventory.md, commits
+bash scripts/sdd/retrofit.sh specs/0*                                     # cheap model: docs + locked tests
+cat .sdd/retrofit/*.status                                                # DONE | GATE_FAIL | TESTS_FAIL | COVERAGE_FAIL
+```
+Optional config: `agent.recon`, `agent.docs` (default `agent.testAuthor`), `reconMaxLines` (default 220).
 Reverse-specify one or two areas per architect session to stay inside rate limits.
 
 ## 6. With Hermes Agent

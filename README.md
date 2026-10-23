@@ -80,11 +80,12 @@ different sessions; the reviewer is a third; the final judge is a script.
 | [scripts/scope_fence.mjs](scripts/scope_fence.mjs) | Reject changes outside the phase's task paths or inside protected paths |
 | [scripts/ui_probe.mjs](scripts/ui_probe.mjs) | Zero-token UI/UX probe (overflow, overlap, touch targets, untranslated text) |
 | [scripts/gates.mjs](scripts/gates.mjs) | Runs all gates, writes `verdict.json` + `feedback.md` |
+| [scripts/recon.sh](scripts/recon.sh) · [scripts/retrofit.sh](scripts/retrofit.sh) | Retrofit: cheap-model code inventories; then docs + locked retrofit tests per feature (METHOD §8) |
 | [scripts/hooks.mjs](scripts/hooks.mjs) | Runs Spec Kit extension hooks (`.specify/extensions.yml`) around each phase, Spec Kit rules, fail closed |
 | [scripts/run_phase.sh](scripts/run_phase.sh) | Implement → gate → retry (≤3) → review → verdict, fully unattended |
 | [scripts/author_tests.sh](scripts/author_tests.sh) | Test author session + red check + lock |
 | [hermes/](hermes/) | Hermes Agent config snippet and the `hybrid-sdd` skill |
-| [tests/](tests/) | `selftest.sh` (20 gate checks) and `selftest_pipeline.sh` (19 loop checks: retries, escalation, worktree isolation, Spec Kit hooks, parallel `[P]` tasks) — no model calls |
+| [tests/](tests/) | `selftest.sh` (20 gate checks), `selftest_pipeline.sh` (19 loop checks: retries, escalation, worktree isolation, Spec Kit hooks, parallel `[P]` tasks) and `selftest_retrofit.sh` (8 retrofit checks) — no model calls |
 
 Requirements: Node.js ≥ 20, git, bash, a shell-callable agent CLI (Hermes: `hermes chat --oneshot`).
 `ui_probe.mjs` additionally needs `puppeteer-core` and a Chromium binary.

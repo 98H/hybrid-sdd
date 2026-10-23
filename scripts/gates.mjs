@@ -50,7 +50,12 @@ async function startServer() {
   }
   return { name: 'serve', pass: false, summary: `app did not answer ${url}`, out: fs.readFileSync(log, 'utf8').slice(-3000) };
 }
-function stopServer() { if (server && server.exitCode === null) { try { process.kill(-server.pid, 'SIGTERM'); } catch { /* gone */ } } }
+function stopServer() {
+  if (server && server.exitCode === null) { try { process.kill(-server.pid, 'SIGTERM'); } catch { /* gone */ } }
+  // fail-safe: nothing may keep listening on the test port after the gates
+  if (cfg.serve && port) spawnSync('bash', ['-c', `ss -ltnpH "sport = :${port}" | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u | xargs -r kill`]);
+  server = null;
+}
 process.on('exit', stopServer);
 
 const accFiles = (() => {

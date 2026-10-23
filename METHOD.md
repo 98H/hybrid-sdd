@@ -155,15 +155,28 @@ migrations). A phase touching them always escalates after PASS: the architect re
 
 ## 8. Retrofitting an existing product
 
-1. Install Spec Kit, write the constitution (with the Hybrid-SDD principle).
-2. Split the product into feature areas (10-15 is typical).
-3. For each area the architect reverse-specifies from code: spec, plan (Constitution Check marks
-   PASS/GAP per principle), tasks with existing work `[x]` and gaps `[ ]` in a final *Converge* phase.
-4. Test author writes acceptance tests for existing behaviour; red check inverted (they must PASS).
-5. Lock. From now on, every change goes through the normal loop; Converge tasks are the backlog.
+The expensive model never reads the codebase; the same role split applies as for new features.
 
-Reverse-specification is reading-heavy. To protect the expensive model's rate limit, retrofit one or
-two areas per session, sequentially, and write each artifact to disk as soon as it is ready.
+1. Install Spec Kit, write the constitution (with the Hybrid-SDD principle). *(architect)*
+2. Split the product into feature areas (10-15 is typical) in `.sdd/retrofit/areas.tsv`
+   (`NNN-name<TAB>hints`). *(architect)*
+3. **Recon** — `scripts/recon.sh .sdd/retrofit/areas.tsv 4`: the cheap model reads the code of each area
+   in a separate one-shot process and writes a factual inventory (`.sdd/retrofit/NNN.inventory.md`:
+   files, behaviours, API, data, plan gates, existing tests, observed gaps). *(cheap model, parallel)*
+4. **Spec** — from the inventory alone the architect writes `specs/NNN/spec.md` (user stories, FR-xxx,
+   SC-xxx, edge cases; normative WHAT) and commits it. *(architect — the only expensive step)*
+5. **Docs + tests** — `scripts/retrofit.sh specs/NNN-*`: per feature the cheap model writes plan,
+   research, data-model, contracts, quickstart, tasks (existing work `[x]`, every FR cited),
+   checklists and review-checklist; the spec gate judges (one retry with feedback); then
+   `author_tests.sh --retrofit` writes acceptance tests in an isolated worktree against the app served
+   from that worktree — they must PASS on current code — and locks them; finally full coverage is
+   checked. Status per feature: `.sdd/retrofit/NNN.status`. *(cheap model + scripts)*
+6. **Converge** — the architect reads the status files, the inventories' "Observed gaps" and the
+   "Spec/code mismatches" in research.md, and appends a final *Converge* phase of `- [ ]` tasks.
+   From now on every change goes through the normal loop; Converge tasks are the backlog.
+
+Reverse-specification of the WHAT is the only reading-heavy step left for the architect, and it reads
+inventories (~200 lines per area), not source. Write each spec to disk as soon as it is ready.
 
 ## 9. Drift control
 
