@@ -81,6 +81,7 @@ It writes tests with `@covers` tags. Then:
 ### Phase E — Implement (implementer, cheap model, ultra reasoning, separate process)
 `scripts/run_phase.sh specs/NNN-name <phase-number>`:
 
+0. Runs Spec Kit `before_implement` extension hooks (`hooks.mjs`); `after_implement` runs after a PASS.
 1. Creates an isolated git worktree `.sdd/worktrees/NNN-phaseN` on branch `sdd/NNN-phaseN` from the base
    branch (runs `worktreeSetup` once). The founder's checkout and the production service are never touched.
 2. Runs the implementer one-shot with the phase's tasks, the spec directory and the constitution.

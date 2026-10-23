@@ -11,6 +11,8 @@
     "timeoutSec": 3600
   },
   "maxAttempts": 3,
+  "$comment_parallel": "true = first attempt runs consecutive [P] tasks with disjoint paths as concurrent implementer sessions (Spec Kit [P] semantics).",
+  "parallel": false,
   "acceptanceDir": "tests/acceptance",
   "build": "npm run build",
   "test": "npm test",
@@ -41,6 +43,11 @@
     "package-lock.json"
   ],
   "highRisk": [],
+  "$comment_hooks": "Spec Kit .specify/extensions.yml hooks run automatically around each phase (scripts/hooks.mjs). Extra shell hooks: hooks.before_implement / hooks.after_implement arrays.",
+  "hooks": {
+    "before_implement": [],
+    "after_implement": []
+  },
   "uiProbe": {
     "enabled": false,
     "baseUrl": "http://127.0.0.1:3000",

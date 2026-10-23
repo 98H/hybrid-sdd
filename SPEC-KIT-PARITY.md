@@ -28,11 +28,11 @@ Audited against Spec Kit 1.2.4 (`specify init --integration claude`), 2026-10-23
 | Check `checklists/` and stop on unchecked items | `verify_specs.mjs` fails on any unchecked checklist item (spec gate runs in every phase) |
 | Read tasks, plan, data-model, contracts, research, quickstart | Implementer prompt receives spec dir + phase tasks; test author receives spec + contracts |
 | Create/verify ignore files (.gitignore, .dockerignore…) | Must be an explicit `(infra)` task in Phase 1 (setup) — the implementer only changes what tasks list |
-| Execute phase by phase, respect dependencies and `[P]` | `run_phase.sh` runs one phase per invocation, in order; `[P]` is advisory inside a phase |
+| Execute phase by phase, respect dependencies and `[P]` | `run_phase.sh` runs one phase per invocation, in order; with `"parallel": true`, consecutive `[P]` tasks with disjoint paths run as concurrent implementer sessions (sequential tasks keep their order) |
 | TDD: tests before code | Stronger: tests by a different session, red-checked, hash-locked before any code |
 | Mark tasks `[X]` as they complete | Ticked by the pipeline only after a PASS verdict |
 | Validate completion against the spec | Gates (machine) + reviewer (checklist) + `verify_specs.mjs --final` (every FR covered) |
-| Extension hooks `before_/after_implement` | See *Hooks* below |
+| Extension hooks `before_/after_implement` | Executed by `scripts/hooks.mjs` around every phase, with Spec Kit's own rules (see *Hooks*) |
 
 ## Workflow
 
@@ -51,10 +51,13 @@ Hybrid SDD does not fork any template. Its additions (FR references in tasks, `(
 
 ## Hooks
 
-Spec Kit commands honour `.specify/extensions.yml` hooks. The architect's commands still run them.
-`run_phase.sh` does not execute `before_implement`/`after_implement` hooks, because implementation no
-longer goes through `/speckit-implement`. Projects that rely on such hooks must express them as gate
-commands in `.sdd/config.json` (`build`, `test`, `regression`) or as `(infra)` tasks.
+The architect's Spec Kit commands run their own hooks as usual. Around implementation, `run_phase.sh`
+calls `scripts/hooks.mjs` with the same rules as `/speckit-implement`: reads `.specify/extensions.yml`,
+skips `enabled: false`, leaves non-empty `condition` to Spec Kit's HookExecutor, lists optional hooks,
+and EXECUTES mandatory (`optional: false`) hooks through the cheap agent (`agent.hookRunner`, default
+`agent.testAuthor`; command names mapped `speckit.x.y` → `/speckit-x-y`). A failing mandatory
+`before_implement` hook stops the phase (exit 2); a failing `after_implement` hook escalates. An unreadable
+`extensions.yml` fails closed. Plain shell hooks can be added in `.sdd/config.json` → `hooks`.
 
 ## Agent context files
 
@@ -71,9 +74,11 @@ explicitly through prompts, so no context file is required.
 5. Isolated git worktree per phase; founder's checkout and production untouched.
 6. FR → task → test traceability enforced by a script.
 7. Bounded retries with structured feedback; escalation rules; high-risk path review.
+8. Project-agnostic: nothing in the tooling is specific to one product; every project-specific value lives in `.sdd/config.json`.
 
-## Known gaps (honest)
+## Known limits (honest)
 
-- `[P]` tasks inside a phase are not run in parallel; phases run sequentially.
-- Extension hooks around implementation are not executed automatically (see *Hooks*).
+- Parallel `[P]` sessions are used on the first attempt only; retries run the whole phase in one session
+  with the gate feedback (merging parallel fixes is riskier than the time it saves).
+- Hook `condition` expressions are not evaluated — identical to `/speckit-implement`.
 - The UI probe checks geometry and text, not visual taste.
