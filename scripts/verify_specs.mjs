@@ -7,8 +7,11 @@
 //  3. at most 3 [NEEDS CLARIFICATION] markers
 //  4. task lines: "- [ ] T001 [P] [US1] text", unique IDs
 //  5. every path cited in a DONE ([x]) task exists
-//  6. every task cites at least one FR-xxx that exists in spec.md (traceability)
-//  7. (unless --pre-tests) every FR in spec.md is covered by an acceptance test with "@covers FR-xxx"
+//  6. every task cites at least one FR-xxx that exists in spec.md, or is tagged "(infra)" for
+//     setup/foundational/polish work that serves no single requirement (traceability)
+//  7. spec.md has at least one SC-xxx success criterion (Spec Kit mandatory section)
+//  8. every checklist under checklists/ is fully checked (same gate as /speckit-implement step 2)
+//  9. (unless --pre-tests) every FR in spec.md is covered by an acceptance test with "@covers FR-xxx"
 // Exit 0 only if every checked spec passes.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -59,6 +62,12 @@ for (const d of dirs) {
   if (nc > 3) errs.push(`spec.md: ${nc} NEEDS CLARIFICATION (>3)`);
   const specFRs = new Set(specTxt.match(FR_RE) || []);
   if (specFRs.size === 0) errs.push('spec.md: no FR-xxx requirements');
+  if (!/\bSC-\d{3}\b/.test(specTxt)) errs.push('spec.md: no SC-xxx success criteria');
+  const clDir = path.join(base, 'checklists');
+  for (const f of walk(clDir).filter(f => f.endsWith('.md'))) {
+    const open = (fs.readFileSync(f, 'utf8').match(/^\s*- \[ \]/gm) || []).length;
+    if (open) errs.push(`checklist ${path.relative(base, f)}: ${open} unchecked item(s)`);
+  }
 
   let done = 0, open = 0; const missing = [], untraced = [], unknownFR = [];
   const tasksFp = path.join(base, 'tasks.md');
@@ -71,7 +80,7 @@ for (const d of dirs) {
       if (!m) { errs.push(`tasks.md bad format: ${line.slice(0, 70)}`); continue; }
       if (ids.has(m[2])) errs.push(`tasks.md duplicate ${m[2]}`); ids.add(m[2]);
       const frs = line.match(FR_RE) || [];
-      if (frs.length === 0) untraced.push(m[2]);
+      if (frs.length === 0 && !/\(infra\)/.test(line)) untraced.push(m[2]);
       for (const fr of frs) if (!specFRs.has(fr)) unknownFR.push(`${m[2]}:${fr}`);
       if (m[1] === ' ') { open++; continue; }
       done++;

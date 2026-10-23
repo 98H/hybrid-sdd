@@ -13,13 +13,15 @@ expect() { # $1 description, $2 expected exit (0|nonzero), rest = command
 git init -q -b main . && git config user.email t@t && git config user.name t
 mkdir -p .sdd src tests/acceptance/001 specs/001-greet/contracts specs/001-greet/checklists
 cp "$HERE/templates/sdd.config.json" .sdd/config.json
-node -e 'const f=".sdd/config.json",c=require("./"+f);c.build="true";c.test="true";c.acceptanceRun="node {FILE}";c.uiProbe.enabled=false;c.highRisk=["src/auth/**"];require("fs").writeFileSync(f,JSON.stringify(c,null,2))'
+node -e 'const f=".sdd/config.json",c=require("./"+f);c.build="true";c.worktreeSetup="";c.test="true";c.acceptanceRun="node {FILE}";c.uiProbe.enabled=false;c.highRisk=["src/auth/**"];require("fs").writeFileSync(f,JSON.stringify(c,null,2))'
 S1=specs/001-greet
 cat >$S1/spec.md <<'EOF'
 # Feature Specification: Greeting
 ## Requirements
 - **FR-001**: greet(name) MUST return "Hello, <name>!".
 - **FR-002**: greet("") MUST throw an error with message "name required".
+## Success Criteria
+- **SC-001**: 100% of acceptance scenarios pass.
 EOF
 for f in plan research data-model quickstart review-checklist; do echo "# $f for greeting" >$S1/$f.md; done
 echo "# module-api: export function greet(name)" >$S1/contracts/module-api.md
@@ -68,5 +70,20 @@ echo "- [ ] T002 [US1] Add docs in src/greet.js" >>$S1/tasks.md
 expect "spec gate catches a task without FR traceability"           nonzero node $S/verify_specs.mjs --spec $S1
 git checkout -q -- $S1/tasks.md
 test -f $S1/.sdd/phase1.verdict.json; expect "gates wrote verdict.json"            0 test -f $S1/.sdd/phase1.verdict.json
+echo "- [ ] T002 [US1] Add lint config in src/.lintrc (infra)" >>$S1/tasks.md
+expect "(infra) tasks are exempt from FR traceability"               0       node $S/verify_specs.mjs --spec $S1
+git checkout -q -- $S1/tasks.md
+echo "- [ ] security reviewed" >$S1/checklists/security.md
+expect "unchecked checklist item blocks the spec gate"               nonzero node $S/verify_specs.mjs --spec $S1
+rm $S1/checklists/security.md
+sed -i 's/^- \*\*SC-001.*//' $S1/spec.md
+expect "spec without SC-xxx success criteria fails"                  nonzero node $S/verify_specs.mjs --spec $S1
+git checkout -q -- $S1/spec.md
+node -e 'const f=".sdd/config.json",c=require("./"+f);c.serve="node -e \"require(\x27http\x27).createServer((q,r)=>r.end(\x27ok\x27)).listen(process.env.SDD_PORT)\"";c.servePort=18777;c.acceptanceRun="curl -sf $SDD_BASE_URL/ >/dev/null && node {FILE}";require("fs").writeFileSync(f,JSON.stringify(c,null,2))'
+git add -A >/dev/null; git commit -qm cfg-serve >/dev/null; git branch -f main HEAD   # config change belongs to the base, not the phase
+expect "serve gate starts the worktree app and exports SDD_BASE_URL" 0       node $S/gates.mjs $S1 1 1
+node -e 'const f=".sdd/config.json",c=require("./"+f);c.serve="exit 1";require("fs").writeFileSync(f,JSON.stringify(c,null,2))'
+git add -A >/dev/null; git commit -qm cfg-badserve >/dev/null; git branch -f main HEAD
+expect "app that fails to start fails closed (acceptance not run)"   nonzero node $S/gates.mjs $S1 1 1
 expect "gates wrote feedback.md"                                    0       test -f $S1/.sdd/phase1.feedback.md
 echo; echo "selftest: $pass passed, $fail failed"; exit $fail

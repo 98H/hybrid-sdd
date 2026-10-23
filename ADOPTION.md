@@ -26,10 +26,13 @@ cp /tmp/hybrid-sdd/scripts/* scripts/sdd/
 cp -r /tmp/hybrid-sdd/prompts scripts/sdd/prompts
 cp /tmp/hybrid-sdd/templates/sdd.config.json .sdd/config.json
 cp /tmp/hybrid-sdd/templates/review-checklist.md .specify/templates/
+echo ".sdd/worktrees/" >> .gitignore
 bash /tmp/hybrid-sdd/tests/selftest.sh && bash /tmp/hybrid-sdd/tests/selftest_pipeline.sh
 ```
 Edit `.sdd/config.json`:
 - `build`, `test`, `regression`: your real commands.
+- `worktreeSetup`: what a fresh worktree needs (e.g. `npm ci`). `serve` + `servePort`: how to start the app
+  from the worktree on a spare port; acceptance tests must read `SDD_BASE_URL` instead of a fixed URL.
 - `failureMarkers`: strings your test runners print on failure (exit codes are not trusted alone).
 - `acceptanceDir`, `acceptanceRun`: where acceptance tests live and how to run one file.
 - `protected`: paths the implementer must never touch (specs, locked tests, secrets, data).
@@ -45,10 +48,11 @@ principles (data honesty, i18n, performance, security…). Founder approves once
 | Step | Who | Command / action | Done when |
 |---|---|---|---|
 | Intent | founder | 1-2 lines | — |
-| Specify | architect | `speckit-specify → plan → tasks → analyze`, write `review-checklist.md` | `node scripts/sdd/verify_specs.mjs --spec specs/NNN-x --pre-tests` exits 0 |
+| Specify | architect | `speckit-specify → clarify? → plan → checklist? → tasks → analyze`, write `review-checklist.md` | `node scripts/sdd/verify_specs.mjs --spec specs/NNN-x --pre-tests` exits 0 |
 | Approve | founder | "approve" or one correction | — |
 | Tests | test author | `bash scripts/sdd/author_tests.sh specs/NNN-x` | prints `AUTHOR OK` (red-checked and locked) |
 | Build | implementer | `bash scripts/sdd/run_phase.sh specs/NNN-x <phase>` per phase | exit 0 (PASS) or 3 (ESCALATE) |
+| Merge | pipeline/founder | merge `sdd/NNN-phaseN` into the base branch before the next phase | base branch green |
 | Escalation | architect | read `specs/NNN-x/.sdd/phaseN.{verdict.json,feedback.md,review.md}` | spec fixed / task split / founder asked |
 | Ship | pipeline | last phase with `--final`, merge, deploy | `verify_specs.mjs` (full) exits 0 |
 

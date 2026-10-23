@@ -69,6 +69,7 @@ different sessions; the reviewer is a third; the final judge is a script.
 | Path | Purpose |
 |---|---|
 | [METHOD.md](METHOD.md) | Full method: phases, rules, escalation, token economics, honest limits |
+| [SPEC-KIT-PARITY.md](SPEC-KIT-PARITY.md) | Command-by-command comparison with GitHub Spec Kit; what is kept, replaced, added, and known gaps |
 | [ADOPTION.md](ADOPTION.md) | Step-by-step: add Hybrid SDD to any repository (with or without Hermes) |
 | [templates/constitution.md](templates/constitution.md) | Constitution scaffold incl. the mandatory Hybrid-SDD principle |
 | [templates/sdd.config.json](templates/sdd.config.json) | Per-project gate configuration |
@@ -82,7 +83,7 @@ different sessions; the reviewer is a third; the final judge is a script.
 | [scripts/run_phase.sh](scripts/run_phase.sh) | Implement → gate → retry (≤3) → review → verdict, fully unattended |
 | [scripts/author_tests.sh](scripts/author_tests.sh) | Test author session + red check + lock |
 | [hermes/](hermes/) | Hermes Agent config snippet and the `hybrid-sdd` skill |
-| [tests/](tests/) | `selftest.sh` (15 gate checks) and `selftest_pipeline.sh` (9 loop checks) — no model calls |
+| [tests/](tests/) | `selftest.sh` (20 gate checks) and `selftest_pipeline.sh` (11 loop checks) — no model calls |
 
 Requirements: Node.js ≥ 20, git, bash, a shell-callable agent CLI (Hermes: `hermes chat --oneshot`).
 `ui_probe.mjs` additionally needs `puppeteer-core` and a Chromium binary.

@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // gates.mjs — run every gate for one phase, write verdict.json + feedback.md. Zero model tokens.
 // Usage: node gates.mjs specs/NNN-name <phase> <attempt> [--final]
-// Fail closed: a gate that crashes or times out is a FAIL.
+// Run from the feature worktree root. Fail closed: a gate that crashes or times out is a FAIL.
+// If cfg.serve is set, the app under test is started from THIS working tree on cfg.servePort and
+// SDD_BASE_URL / SDD_PORT are exported to acceptance tests and the UI probe, so the gates never
+// test a production instance that is still running old code.
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, spawn } from 'node:child_process';
 
 const [specDir, phase, attempt = '1'] = process.argv.slice(2);
 const FINAL = process.argv.includes('--final');
@@ -18,10 +21,12 @@ const num = path.basename(specDir).slice(0, 3);
 const markers = cfg.failureMarkers || [];
 // A marker prefixed with "re:" is a regular expression; otherwise a literal substring.
 const hit = (txt, m) => m.startsWith('re:') ? new RegExp(m.slice(3), 'm').test(txt) : txt.includes(m);
+const port = cfg.servePort || 0;
+const env = { ...process.env, ...(cfg.serve ? { SDD_PORT: String(port), SDD_BASE_URL: `http://127.0.0.1:${port}` } : {}) };
 
 function run(name, cmd, { markersApply = false, timeout = 1800 } = {}) {
   if (!cmd) return { name, pass: true, summary: 'not configured (skipped)', out: '' };
-  const r = spawnSync('bash', ['-lc', cmd], { cwd: ROOT, encoding: 'utf8', timeout: timeout * 1000, maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync('bash', ['-lc', cmd], { cwd: ROOT, env, encoding: 'utf8', timeout: timeout * 1000, maxBuffer: 64 * 1024 * 1024 });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
   const hits = markersApply ? markers.filter(m => hit(out, m)) : [];
   const timedOut = r.error && r.error.code === 'ETIMEDOUT';
@@ -30,6 +35,23 @@ function run(name, cmd, { markersApply = false, timeout = 1800 } = {}) {
   return { name, pass, summary, out };
 }
 const node = (s, a) => `node ${JSON.stringify(path.join(HERE, s))} ${a}`;
+
+let server = null;
+async function startServer() {
+  if (!cfg.serve) return { name: 'serve', pass: true, summary: 'not configured (skipped)', out: '' };
+  const log = path.join(outDir, `serve.p${phase}.a${attempt}.log`);
+  const fd = fs.openSync(log, 'w');
+  server = spawn('bash', ['-lc', cfg.serve], { cwd: ROOT, env, detached: true, stdio: ['ignore', fd, fd] });
+  const url = `http://127.0.0.1:${port}${cfg.serveReadyPath || '/'}`;
+  for (let i = 0; i < (cfg.serveTimeoutSec || 60); i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    try { const r = await fetch(url); if (r.status < 500) return { name: 'serve', pass: true, summary: `up on :${port}`, out: '' }; } catch { /* not yet */ }
+    if (server.exitCode !== null) break;
+  }
+  return { name: 'serve', pass: false, summary: `app did not answer ${url}`, out: fs.readFileSync(log, 'utf8').slice(-3000) };
+}
+function stopServer() { if (server && server.exitCode === null) { try { process.kill(-server.pid, 'SIGTERM'); } catch { /* gone */ } } }
+process.on('exit', stopServer);
 
 const accFiles = (() => {
   const walk = (d) => !fs.existsSync(d) ? [] : fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
@@ -42,11 +64,14 @@ const gates = [
   run('scope', node('scope_fence.mjs', `${specDir} ${phase}`)),
   run('build', cfg.build),
   run('unit', cfg.test, { markersApply: true }),
-  run('acceptance', accCmd, { markersApply: true }),
-  run('ui', cfg.uiProbe?.enabled ? node('ui_probe.mjs', `--out ${JSON.stringify(outDir)}`) : ''),
-  run('spec', node('verify_specs.mjs', `--spec ${specDir}${FINAL ? '' : ' --pre-tests'}`)),
 ];
-if (FINAL && cfg.regression) gates.push(run('regression', cfg.regression, { markersApply: true, timeout: 7200 }));
+const srv = await startServer(); gates.push(srv);
+const notRun = (n) => ({ name: n, pass: false, summary: 'not run: app under test did not start', out: '' });
+gates.push(srv.pass ? run('acceptance', accCmd, { markersApply: true }) : notRun('acceptance'));
+gates.push(!cfg.uiProbe?.enabled ? run('ui', '') : srv.pass ? run('ui', node('ui_probe.mjs', `--out ${JSON.stringify(outDir)}`)) : notRun('ui'));
+gates.push(run('spec', node('verify_specs.mjs', `--spec ${specDir}${FINAL ? '' : ' --pre-tests'}`)));
+if (FINAL && cfg.regression) gates.push(srv.pass ? run('regression', cfg.regression, { markersApply: true, timeout: 7200 }) : notRun('regression'));
+stopServer();
 
 const scopeOut = gates.find(g => g.name === 'scope').out;
 const highRisk = (scopeOut.match(/^HIGH_RISK (.*)$/m) || [])[1]?.split(' ') || [];

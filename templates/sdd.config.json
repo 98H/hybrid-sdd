@@ -1,6 +1,8 @@
 {
   "$comment": "Hybrid SDD per-project configuration. Copy to .sdd/config.json at the repository root.",
   "baseBranch": "main",
+  "$comment_worktree": "run_phase.sh works in .sdd/worktrees/<NNN-phaseN>. worktreeSetup runs once per new worktree (install deps, link data).",
+  "worktreeSetup": "npm ci --prefer-offline --no-audit",
   "agent": {
     "$comment": "Shell commands used to launch one-shot model sessions. {PROMPT_FILE} is replaced by a file path.",
     "implementer": "hermes chat --oneshot --yolo -Q -m ag/gemini-3.8-flash-high --reasoning ultra --query-file {PROMPT_FILE}",
@@ -13,8 +15,18 @@
   "build": "npm run build",
   "test": "npm test",
   "acceptanceRun": "node {FILE}",
+  "$comment_serve": "Start the app under test FROM THE WORKTREE on servePort; tests and ui_probe read SDD_BASE_URL / SDD_PORT. Empty = no server.",
+  "serve": "",
+  "servePort": 18080,
+  "serveReadyPath": "/",
+  "serveTimeoutSec": 60,
   "$comment_failureMarkers": "Literal substrings, or regex when prefixed with re: (e.g. \"re:Failed: [1-9]\"). Exit codes alone are not trusted.",
-  "failureMarkers": ["❌", "AssertionError", "re:[1-9]\\d* defects across", "\"pass\": false"],
+  "failureMarkers": [
+    "❌",
+    "AssertionError",
+    "re:[1-9]\\d* defects across",
+    "\"pass\": false"
+  ],
   "regression": "",
   "protected": [
     ".specify/**",
@@ -22,20 +34,43 @@
     "tests/acceptance/**",
     ".sdd/**",
     "**/.env",
-    "**/*.key"
+    "**/*.key",
+    ".sdd/worktrees/**"
   ],
-  "alwaysAllowed": ["package-lock.json"],
+  "alwaysAllowed": [
+    "package-lock.json"
+  ],
   "highRisk": [],
   "uiProbe": {
     "enabled": false,
     "baseUrl": "http://127.0.0.1:3000",
-    "pages": ["/"],
+    "pages": [
+      "/"
+    ],
     "settleMs": 4000,
-    "viewports": [{"name": "desktop", "width": 1440, "height": 900}, {"name": "mobile", "width": 390, "height": 844, "mobile": true}],
-    "locales": [{"name": "en", "setup": ""}],
+    "viewports": [
+      {
+        "name": "desktop",
+        "width": 1440,
+        "height": 900
+      },
+      {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "mobile": true
+      }
+    ],
+    "locales": [
+      {
+        "name": "en",
+        "setup": ""
+      }
+    ],
     "minTouchTarget": 44,
     "interactiveSelector": "button, a[href], input, select, textarea, [role=button], [tabindex]:not([tabindex='-1'])",
     "untranslatedPattern": "",
-    "chromePath": "/usr/bin/chromium"
+    "chromePath": "/usr/bin/chromium",
+    "$comment": "baseUrl is overridden by SDD_BASE_URL when gates.mjs serves the worktree."
   }
 }

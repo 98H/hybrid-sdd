@@ -16,6 +16,8 @@ import os from 'node:os';
 const ROOT = process.cwd();
 const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, '.sdd', 'config.json'), 'utf8')).uiProbe || {};
 const out = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : path.join(ROOT, '.sdd', 'out');
+// gates.mjs exports SDD_BASE_URL when it serves the worktree build; prefer it over the static config.
+if (process.env.SDD_BASE_URL) cfg.baseUrl = process.env.SDD_BASE_URL;
 if (!cfg.enabled) { console.log('UI PROBE SKIPPED (uiProbe.enabled=false)'); process.exit(0); }
 let puppeteer;
 try { puppeteer = (await import('puppeteer-core')).default; } catch { console.log('UI PROBE FAIL: puppeteer-core not installed'); process.exit(1); }

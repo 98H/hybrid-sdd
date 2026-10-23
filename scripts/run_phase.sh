@@ -1,20 +1,32 @@
 #!/usr/bin/env bash
 # run_phase.sh — unattended implement → gate → retry → review loop for ONE tasks.md phase.
-# Usage: run_phase.sh specs/NNN-name <phase> [--final]
+# Usage: run_phase.sh specs/NNN-name <phase> [--final]      (run from the repository root)
+# Isolation: works in a dedicated git worktree (.sdd/worktrees/NNN-phaseN) on branch sdd/NNN-phaseN,
+# so the founder's checkout and the running production service are never touched.
 # Runs in a separate process from the architect: no implementer output enters the architect's context.
-# Result: specs/NNN-name/.sdd/phase<N>.verdict.json (+ feedback.md, review.md). Exit 0 = PASS, 3 = ESCALATE.
+# Result: <worktree>/specs/NNN-name/.sdd/phase<N>.verdict.json (+ feedback.md, review.md), copied back to
+# specs/NNN-name/.sdd/ in the main checkout. Exit 0 = PASS, 3 = ESCALATE, 2 = setup error.
 set -uo pipefail
 SPEC=${1:?usage: run_phase.sh specs/NNN-name <phase> [--final]}; PHASE=${2:?phase number}; FINAL=${3:-}
-ROOT=$(pwd); HERE=$(cd "$(dirname "$0")" && pwd); PROMPTS="$HERE/prompts"; [[ -d $PROMPTS ]] || PROMPTS="$HERE/../prompts"
-CFG="$ROOT/.sdd/config.json"; OUT="$ROOT/$SPEC/.sdd"; mkdir -p "$OUT"
+MAIN=$(pwd); HERE=$(cd "$(dirname "$0")" && pwd); PROMPTS="$HERE/prompts"; [[ -d $PROMPTS ]] || PROMPTS="$HERE/../prompts"
+CFG="$MAIN/.sdd/config.json"
 jqr() { node -e "const c=require('$CFG');const v=$1;process.stdout.write(v==null?'':String(v))"; }
 BASE=$(jqr "c.baseBranch||'main'"); MAX=$(jqr "c.maxAttempts||3"); TMO=$(jqr "(c.agent&&c.agent.timeoutSec)||3600")
-IMPL=$(jqr "c.agent.implementer"); REV=$(jqr "c.agent.reviewer")
-FEAT=$(basename "$SPEC"); BR="sdd/${FEAT%%-*}-phase$PHASE"
-log() { echo "$(date -u +%FT%TZ) [$FEAT p$PHASE] $*" | tee -a "$OUT/run.log"; }
+IMPL=$(jqr "c.agent.implementer"); REV=$(jqr "c.agent.reviewer"); SETUP=$(jqr "c.worktreeSetup||''")
+FEAT=$(basename "$SPEC"); NUM=${FEAT%%-*}; BR="sdd/$NUM-phase$PHASE"
+WT="$MAIN/.sdd/worktrees/$NUM-phase$PHASE"
 
-git rev-parse --verify -q "$BR" >/dev/null && git checkout -q "$BR" || git checkout -q -b "$BR" "$BASE" || { log "cannot create branch $BR"; exit 2; }
-node "$HERE/lock_tests.mjs" check "$SPEC" >/dev/null || { log "acceptance tests not locked — run author_tests.sh first"; exit 2; }
+# ── isolated worktree ─────────────────────────────────────────────────────────
+if [[ ! -d $WT ]]; then
+  if git rev-parse --verify -q "$BR" >/dev/null; then git worktree add -q "$WT" "$BR" || { echo "cannot add worktree $WT"; exit 2; }
+  else git worktree add -q -b "$BR" "$WT" "$BASE" || { echo "cannot create worktree $WT from $BASE"; exit 2; }; fi
+  if [[ -n $SETUP ]]; then (cd "$WT" && bash -lc "$SETUP") >"$WT/.sdd-setup.log" 2>&1 || { echo "worktreeSetup failed — see $WT/.sdd-setup.log"; exit 2; }; rm -f "$WT/.sdd-setup.log"; fi
+fi
+cd "$WT" || exit 2
+OUT="$WT/$SPEC/.sdd"; mkdir -p "$OUT"
+log() { echo "$(date -u +%FT%TZ) [$FEAT p$PHASE] $*" | tee -a "$OUT/run.log"; }
+publish() { mkdir -p "$MAIN/$SPEC/.sdd"; cp "$OUT"/phase$PHASE.* "$OUT/run.log" "$MAIN/$SPEC/.sdd/" 2>/dev/null; }
+node "$HERE/lock_tests.mjs" check "$SPEC" >/dev/null || { log "acceptance tests not locked on $BASE — run author_tests.sh and commit first"; exit 2; }
 
 render() { # $1 template, $2 attempt -> prompt file
   local f="$OUT/prompt.$(basename "$1" .md).p$PHASE.a$2.md"
@@ -33,8 +45,8 @@ agent() { # $1 command template, $2 prompt file, $3 log
   local cmd=${1//\{PROMPT_FILE\}/$2}; timeout "$TMO" bash -lc "$cmd" >"$3" 2>&1; echo $? >>"$3"
 }
 escalate() {
-  node -e 'const fs=require("fs"),f=process.argv[1];const v=JSON.parse(fs.readFileSync(f));v.escalate=true;v.reason=process.argv[2];fs.writeFileSync(f,JSON.stringify(v,null,2)+"\n")' "$OUT/phase$PHASE.verdict.json" "$1"
-  log "ESCALATE: $1"; git add -A "$OUT" && git commit -qm "sdd($FEAT): phase $PHASE ESCALATE" --allow-empty; exit 3
+  node -e 'const fs=require("fs"),f=process.argv[1];const v=fs.existsSync(f)?JSON.parse(fs.readFileSync(f)):{};v.escalate=true;v.reason=process.argv[2];fs.writeFileSync(f,JSON.stringify(v,null,2)+"\n")' "$OUT/phase$PHASE.verdict.json" "$1"
+  log "ESCALATE: $1"; git add -A "$OUT" && git commit -qm "sdd($FEAT): phase $PHASE ESCALATE" --allow-empty; publish; exit 3
 }
 
 rm -f "$OUT/phase$PHASE.feedback.md"
@@ -54,8 +66,8 @@ for ((a=1; a<=MAX; a++)); do
         fs.writeFileSync(p,out);' "$SPEC" "$PHASE"
       git add -A && git commit -qm "sdd($FEAT): phase $PHASE PASS (attempt $a)"
       HR=$(node -e 'const v=require(process.argv[1]);process.stdout.write((v.highRisk||[]).join(" "))' "$OUT/phase$PHASE.verdict.json")
-      [[ -n "$HR" ]] && escalate "PASS but touches high-risk paths: $HR — architect review of this diff required"
-      log "PASS"; git add -A "$OUT" && git commit -qm "sdd($FEAT): phase $PHASE log" --allow-empty; exit 0
+      [[ -n "$HR" ]] && escalate "PASS but touches high-risk paths: $HR — architect review of phase$PHASE.diff required before merge"
+      log "PASS — branch $BR ready to merge"; git add -A "$OUT" && git commit -qm "sdd($FEAT): phase $PHASE log" --allow-empty; publish; exit 0
     fi
     { echo; echo "## FAIL reviewer — checklist violations"; sed -n '/^VERDICT/,$p' "$OUT/phase$PHASE.review.md"; } >>"$OUT/phase$PHASE.feedback.md"
     log "attempt $a: reviewer FAIL"

@@ -56,9 +56,11 @@ Architect writes `.specify/memory/constitution.md` from `templates/constitution.
 the *Hybrid SDD* principle (role split, locks, gates, escalation). Founder approves once.
 
 ### Phase B — Specify (architect, once per feature)
-From the founder's intent the architect runs Spec Kit's `specify → plan → tasks → analyze` and also
-writes `review-checklist.md`. At most 3 `[NEEDS CLARIFICATION]` items; everything else uses
-documented defaults. Output: a ≤10-line summary to the founder.
+From the founder's intent the architect runs the full Spec Kit chain:
+`specify → clarify (if ambiguous) → plan → checklist (high-risk features) → tasks → analyze`, then writes
+`review-checklist.md`. At most 3 clarification questions, batched into the approval message. Every task
+cites `(FR-xxx)` or is tagged `(infra)`. Output: a ≤10-line summary to the founder.
+Command-by-command mapping: [SPEC-KIT-PARITY.md](SPEC-KIT-PARITY.md).
 
 Completion criterion: `node scripts/verify_specs.mjs --spec specs/NNN-name --pre-tests` exits 0.
 
@@ -79,7 +81,8 @@ It writes tests with `@covers` tags. Then:
 ### Phase E — Implement (implementer, cheap model, ultra reasoning, separate process)
 `scripts/run_phase.sh specs/NNN-name <phase-number>`:
 
-1. Creates branch `sdd/NNN-phaseN` from the base branch.
+1. Creates an isolated git worktree `.sdd/worktrees/NNN-phaseN` on branch `sdd/NNN-phaseN` from the base
+   branch (runs `worktreeSetup` once). The founder's checkout and the production service are never touched.
 2. Runs the implementer one-shot with the phase's tasks, the spec directory and the constitution.
 3. Runs the gates. On FAIL, writes `feedback.md` (failing gate, failing test names, trimmed output,
    cited FRs) and re-runs the implementer with it. At most 3 attempts.
@@ -96,7 +99,8 @@ uncertainty. The architect reads `verdict.json` + `feedback.md` (small files), d
 unless the path is high-risk.
 
 ### Phase G — Ship
-All phases PASS → `verify_specs.mjs` passes → full regression gate → merge → deploy → report to the
+Each PASS leaves branch `sdd/NNN-phaseN` ready; merge it into the base branch before the next phase
+(the next phase's worktree starts from the base). All phases PASS → `verify_specs.mjs` passes → full regression gate → merge → deploy → report to the
 founder with the verdict files as evidence.
 
 ## 4. The gates (zero model tokens)
@@ -107,6 +111,7 @@ founder with the verdict files as evidence.
 | Lock | `lock_tests.mjs check` | any locked acceptance file changed, added to or removed |
 | Scope fence | `scope_fence.mjs` | changed file not under a path cited by the phase's tasks (+ `alwaysAllowed`), or under `protected` |
 | Build | config `build` | non-zero exit |
+| Serve | config `serve` | the app built from the worktree does not answer on `servePort` (tests then do not run → FAIL) |
 | Tests | config `test` + acceptance suites | non-zero exit OR configured failure markers found in output (exit codes lie) |
 | UI probe | `ui_probe.mjs` | horizontal overflow, interactive elements overlapping, touch target < 44px on mobile, untranslated strings in a non-default locale, console errors |
 | Regression | config `regression` | same as tests, run on merge only |
@@ -159,7 +164,14 @@ migrations). A phase touching them always escalates after PASS: the architect re
 Reverse-specification is reading-heavy. To protect the expensive model's rate limit, retrofit one or
 two areas per session, sequentially, and write each artifact to disk as soon as it is ready.
 
-## 9. Honest limits
+## 9. Drift control
+
+Manual hotfixes and emergency changes bypass the loop. After any of them, and periodically, the
+architect runs `speckit-converge`: it compares the code with the specs and appends `- [ ]` tasks to the
+owning `tasks.md`, which then go through the normal phase loop. `verify_specs.mjs` on the base branch
+must stay green.
+
+## 10. Honest limits
 
 - Tests prove only what they measure. A wrong or thin spec yields a correctly implemented wrong
   product. Spec quality is the real bottleneck — that is where the expensive model is spent.
