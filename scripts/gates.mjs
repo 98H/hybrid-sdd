@@ -16,12 +16,14 @@ const outDir = path.join(ROOT, specDir, '.sdd');
 fs.mkdirSync(outDir, { recursive: true });
 const num = path.basename(specDir).slice(0, 3);
 const markers = cfg.failureMarkers || [];
+// A marker prefixed with "re:" is a regular expression; otherwise a literal substring.
+const hit = (txt, m) => m.startsWith('re:') ? new RegExp(m.slice(3), 'm').test(txt) : txt.includes(m);
 
 function run(name, cmd, { markersApply = false, timeout = 1800 } = {}) {
   if (!cmd) return { name, pass: true, summary: 'not configured (skipped)', out: '' };
   const r = spawnSync('bash', ['-lc', cmd], { cwd: ROOT, encoding: 'utf8', timeout: timeout * 1000, maxBuffer: 64 * 1024 * 1024 });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
-  const hits = markersApply ? markers.filter(m => out.includes(m)) : [];
+  const hits = markersApply ? markers.filter(m => hit(out, m)) : [];
   const timedOut = r.error && r.error.code === 'ETIMEDOUT';
   const pass = r.status === 0 && !timedOut && hits.length === 0;
   const summary = timedOut ? `timed out after ${timeout}s` : r.status !== 0 ? `exit ${r.status}` : hits.length ? `failure markers: ${hits.join(', ')}` : 'ok';
@@ -53,7 +55,7 @@ const verdict = { feature: path.basename(specDir), phase: Number(phase), attempt
   gates: Object.fromEntries(gates.map(g => [g.name, { pass: g.pass, summary: g.summary }])), highRisk, escalate: false };
 fs.writeFileSync(path.join(outDir, `phase${phase}.verdict.json`), JSON.stringify(verdict, null, 2) + '\n');
 
-const trim = (s, n = 4000) => { const lines = s.split('\n'); const keep = lines.filter(l => markers.some(m => l.includes(m)) || /error|fail|expected|assert/i.test(l));
+const trim = (s, n = 4000) => { const lines = s.split('\n'); const keep = lines.filter(l => markers.some(m => hit(l, m)) || /error|fail|expected|assert/i.test(l));
   const body = (keep.length ? keep : lines.slice(-80)).join('\n'); return body.length > n ? body.slice(-n) : body; };
 const fb = [`# Gate feedback — ${verdict.feature} phase ${phase}, attempt ${attempt}`, '', `Result: ${pass ? 'PASS' : 'FAIL'}`, ''];
 for (const g of gates) { fb.push(`## ${g.pass ? 'PASS' : 'FAIL'} ${g.name} — ${g.summary}`); if (!g.pass && g.out) fb.push('```', trim(g.out), '```'); fb.push(''); }

@@ -13,7 +13,8 @@
   "build": "npm run build",
   "test": "npm test",
   "acceptanceRun": "node {FILE}",
-  "failureMarkers": ["❌", "FAIL", "AssertionError", "defects across", "\"pass\": false"],
+  "$comment_failureMarkers": "Literal substrings, or regex when prefixed with re: (e.g. \"re:Failed: [1-9]\"). Exit codes alone are not trusted.",
+  "failureMarkers": ["❌", "AssertionError", "re:[1-9]\\d* defects across", "\"pass\": false"],
   "regression": "",
   "protected": [
     ".specify/**",
@@ -29,6 +30,7 @@
     "enabled": false,
     "baseUrl": "http://127.0.0.1:3000",
     "pages": ["/"],
+    "settleMs": 4000,
     "viewports": [{"name": "desktop", "width": 1440, "height": 900}, {"name": "mobile", "width": 390, "height": 844, "mobile": true}],
     "locales": [{"name": "en", "setup": ""}],
     "minTouchTarget": 44,

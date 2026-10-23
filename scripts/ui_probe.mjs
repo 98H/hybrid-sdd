@@ -11,6 +11,7 @@
 // Writes <out>/ui_probe.json and exits 1 if any defect is found. Requires puppeteer-core + Chromium.
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 
 const ROOT = process.cwd();
 const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, '.sdd', 'config.json'), 'utf8')).uiProbe || {};
@@ -19,7 +20,16 @@ if (!cfg.enabled) { console.log('UI PROBE SKIPPED (uiProbe.enabled=false)'); pro
 let puppeteer;
 try { puppeteer = (await import('puppeteer-core')).default; } catch { console.log('UI PROBE FAIL: puppeteer-core not installed'); process.exit(1); }
 
-const browser = await puppeteer.launch({ executablePath: cfg.chromePath, headless: 'new', args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+// Private throwaway profile: never collide with another running browser.
+// Snap-packaged Chromium can only use profiles under ~/snap/chromium/common (otherwise it fails with a
+// misleading "browser is already running" error).
+const snapBase = path.join(os.homedir(), 'snap', 'chromium', 'common');
+const profBase = fs.existsSync(snapBase) ? path.join(snapBase, 'sdd-ui-probe') : os.tmpdir();
+fs.mkdirSync(profBase, { recursive: true });
+const profile = fs.mkdtempSync(path.join(profBase, 'profile-'));
+let browser;
+try { browser = await puppeteer.launch({ executablePath: cfg.chromePath, headless: 'new', userDataDir: profile, args: ['--no-sandbox', '--disable-dev-shm-usage'] }); }
+catch (e) { console.log(`UI PROBE FAIL: browser launch failed: ${String(e).slice(0, 200)}`); fs.rmSync(profile, { recursive: true, force: true }); process.exit(1); }
 const results = []; let defects = 0;
 try {
   for (const vp of cfg.viewports) for (const loc of cfg.locales) for (const pg of cfg.pages) {
@@ -28,8 +38,13 @@ try {
     page.on('console', m => { if (m.type() === 'error') consoleErr.push(m.text().slice(0, 200)); });
     page.on('pageerror', e => consoleErr.push(String(e).slice(0, 200)));
     await page.setViewport({ width: vp.width, height: vp.height, isMobile: !!vp.mobile, hasTouch: !!vp.mobile, deviceScaleFactor: 1 });
-    await page.goto(cfg.baseUrl + pg, { waitUntil: 'networkidle2', timeout: 60000 });
-    if (loc.setup) { await page.evaluate(loc.setup); await new Promise(r => setTimeout(r, 1500)); }
+    // Live apps keep sockets/polling open, so never wait for network idle: DOM ready + settle time.
+    await page.goto(cfg.baseUrl + pg, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await new Promise(r => setTimeout(r, cfg.settleMs ?? 4000));
+    if (loc.setup) {
+      const nav = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => null);
+      await page.evaluate(loc.setup); await nav; await new Promise(r => setTimeout(r, cfg.settleMs ?? 4000));
+    }
     const r = await page.evaluate((sel, minT, mobile, untr) => {
       const vis = (el) => { const s = getComputedStyle(el); const b = el.getBoundingClientRect();
         return s.visibility !== 'hidden' && s.display !== 'none' && +s.opacity > 0.05 && b.width > 0 && b.height > 0 && b.bottom > 0 && b.right > 0 && b.top < innerHeight && b.left < innerWidth; };
@@ -57,7 +72,8 @@ try {
     results.push({ page: pg, viewport: vp.name, locale: loc.name, defects: n, ...r });
     await page.close();
   }
-} finally { await browser.close(); }
+} catch (e) { console.log(`UI PROBE FAIL: ${String(e).slice(0, 300)}`); await browser.close(); fs.rmSync(profile, { recursive: true, force: true }); process.exit(1); }
+finally { await browser.close().catch(() => {}); fs.rmSync(profile, { recursive: true, force: true }); }
 fs.mkdirSync(out, { recursive: true });
 fs.writeFileSync(path.join(out, 'ui_probe.json'), JSON.stringify({ defects, results }, null, 2));
 for (const r of results) console.log(`${r.defects ? 'FAIL' : 'PASS'} ${r.page} ${r.viewport}/${r.locale} defects=${r.defects}` +
