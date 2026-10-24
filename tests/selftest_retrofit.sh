@@ -40,7 +40,7 @@ if grep -q "Gate feedback" "$1"; then printf '# Tasks\n## Phase 1: Core\n- [x] T
 echo "DOCS OK"
 EOS
 chmod +x bin/author bin/docs
-node -e 'const f=".sdd/config.json",c=require("./"+f);Object.assign(c,{build:"true",test:"true",acceptanceRun:"node {FILE}",worktreeSetup:"",serve:"node bin/app.mjs",servePort:18931,serveTimeoutSec:20});c.uiProbe.enabled=false;c.agent={implementer:"true",testAuthor:"bin/author {PROMPT_FILE}",docs:"bin/docs {PROMPT_FILE}",reviewer:"true",timeoutSec:60};require("fs").writeFileSync(f,JSON.stringify(c,null,2))'
+node -e 'const f=".sdd/config.json",c=require("./"+f);Object.assign(c,{build:"true",test:"true",acceptanceRun:"node {FILE}",worktreeSetup:"",serve:"node bin/app.mjs",servePort:18961,serveTimeoutSec:20});c.uiProbe.enabled=false;c.agent={implementer:"true",testAuthor:"bin/author {PROMPT_FILE}",docs:"bin/docs {PROMPT_FILE}",reviewer:"true",timeoutSec:60};require("fs").writeFileSync(f,JSON.stringify(c,null,2))'
 printf '# Spec\n- **FR-001**: greet("Ada") MUST return "Hello, Ada!".\n- **FR-002**: greet("") MUST throw "name required".\n- **SC-001**: all scenarios pass.\n' >$S1/spec.md
 git add -A && git commit -qm init
 pass=0; fail=0
@@ -53,7 +53,7 @@ chk "retrofit tests written in an isolated worktree against the worktree app" 'g
 chk "tests locked and fast-forwarded into the checkout"            'test -f $S1/.sdd/tests.lock.json && git log --oneline | grep -q "acceptance tests locked (--retrofit)"'
 chk "worktree and temp branch cleaned up"                          '! test -d .sdd/worktrees/001-tests && ! git rev-parse -q --verify sdd/001-tests'
 chk "full coverage gate passed → status DONE"                      'grep -qx DONE $R/001-greet.status'
-chk "no app instance left running"                                 '! ss -ltnH "sport = :18931" | grep -q .'
+chk "no app instance left running"                                 '! ss -ltnH "sport = :18961" | grep -q .'
 
 # retrofit test that fails on existing code must NOT be locked
 sed -i "s/Hello, Ada!/Hi, Ada!/" bin/author; git add -A && git commit -qm breaktest

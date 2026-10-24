@@ -53,7 +53,7 @@ if (fs.existsSync(yml)) {
       ].join('\n'));
       const tpl = (cfg.agent && (cfg.agent.hookRunner || cfg.agent.testAuthor)) || '';
       if (!tpl) { log(`FAIL no agent.hookRunner/testAuthor configured to run /${name}`); failed++; continue; }
-      const run = spawnSync('bash', ['-lc', tpl.replaceAll('{PROMPT_FILE}', prompt)], { cwd: ROOT, encoding: 'utf8', timeout: ((cfg.agent && cfg.agent.timeoutSec) || 3600) * 1000, maxBuffer: 32 * 1024 * 1024 });
+      const run = spawnSync('bash', ['-lc', tpl.replaceAll('{PROMPT_FILE}', prompt)], { cwd: ROOT, env: { ...process.env, TERMINAL_CWD: ROOT }, encoding: 'utf8', timeout: ((cfg.agent && cfg.agent.timeoutSec) || 3600) * 1000, maxBuffer: 32 * 1024 * 1024 });
       const out = `${run.stdout || ''}${run.stderr || ''}`;
       fs.writeFileSync(path.join(outDir, `hook.${event}.${name}.log`), out);
       const ok = run.status === 0 && /HOOK OK\s*$/m.test(out) && !/HOOK FAIL/.test(out);

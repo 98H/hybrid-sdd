@@ -23,6 +23,8 @@ if [[ ! -d $WT ]]; then
   if [[ -n $SETUP ]]; then (cd "$WT" && bash -lc "$SETUP") >"$WT/.sdd-setup.log" 2>&1 || { echo "worktreeSetup failed — see $WT/.sdd-setup.log"; exit 2; }; rm -f "$WT/.sdd-setup.log"; fi
 fi
 cd "$WT" || exit 2
+# Agent CLIs (e.g. Hermes) may pin their tool cwd via env; force every agent process into this worktree.
+export TERMINAL_CWD="$WT"
 OUT="$WT/$SPEC/.sdd"; mkdir -p "$OUT"
 log() { echo "$(date -u +%FT%TZ) [$FEAT p$PHASE] $*" | tee -a "$OUT/run.log"; }
 publish() { mkdir -p "$MAIN/$SPEC/.sdd"; cp "$OUT"/phase$PHASE.* "$OUT/run.log" "$OUT"/hooks.log "$MAIN/$SPEC/.sdd/" 2>/dev/null; }

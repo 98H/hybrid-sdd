@@ -20,6 +20,8 @@ FEAT=$(basename "$SPEC"); NUM=${FEAT%%-*}; BR="sdd/$NUM-tests"; WT="$MAIN/.sdd/w
 git worktree remove --force "$WT" 2>/dev/null; git branch -D "$BR" -q 2>/dev/null
 git worktree add -q -b "$BR" "$WT" HEAD || { echo "AUTHOR FAIL: cannot create worktree"; exit 2; }
 cd "$WT" || exit 2
+# Agent CLIs (e.g. Hermes) may pin their tool cwd via env; force every agent process into this worktree.
+export TERMINAL_CWD="$WT"
 if [[ -n $SETUP ]]; then bash -lc "$SETUP" >/dev/null 2>&1 || { echo "AUTHOR FAIL: worktreeSetup failed"; exit 2; }; fi
 OUT="$WT/$SPEC/.sdd"; mkdir -p "$OUT"
 publish() { mkdir -p "$MAIN/$SPEC/.sdd"; cp "$OUT"/redcheck.*.log "$OUT/test-author.log" "$OUT/serve.tests.log" "$MAIN/$SPEC/.sdd/" 2>/dev/null; }

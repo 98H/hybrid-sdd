@@ -9,6 +9,7 @@ set -uo pipefail
 LIST=${1:?usage: recon.sh areas.tsv [concurrency]}; PAR=${2:-3}
 ROOT=$(pwd); HERE=$(cd "$(dirname "$0")" && pwd); PROMPTS="$HERE/prompts"; [[ -d $PROMPTS ]] || PROMPTS="$HERE/../prompts"
 CFG="$ROOT/.sdd/config.json"
+export TERMINAL_CWD="$ROOT"
 jqr() { node -e "const c=require('$CFG');const v=$1;process.stdout.write(v==null?'':String(v))"; }
 CMD=$(jqr "(c.agent.recon||c.agent.testAuthor)"); TMO=$(jqr "(c.agent&&c.agent.timeoutSec)||3600"); MAXL=$(jqr "c.reconMaxLines||220")
 OUT="$ROOT/.sdd/retrofit"; mkdir -p "$OUT"
