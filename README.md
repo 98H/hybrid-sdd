@@ -80,7 +80,7 @@ different sessions; the reviewer is a third; the final judge is a script.
 | [scripts/scope_fence.mjs](scripts/scope_fence.mjs) | Reject changes outside the phase's task paths or inside protected paths |
 | [scripts/ui_probe.mjs](scripts/ui_probe.mjs) | Zero-token UI/UX probe (overflow, overlap, touch targets, untranslated text) |
 | [scripts/gates.mjs](scripts/gates.mjs) | Runs all gates, writes `verdict.json` + `feedback.md` |
-| [scripts/recon.sh](scripts/recon.sh) · [scripts/retrofit.sh](scripts/retrofit.sh) | Retrofit: cheap-model code inventories; then docs + locked retrofit tests per feature (METHOD §8) |
+| [scripts/recon.sh](scripts/recon.sh) · [scripts/retrofit.sh](scripts/retrofit.sh) · [scripts/fix_tests.sh](scripts/fix_tests.sh) | Retrofit: cheap-model code inventories; then docs + locked retrofit tests per feature (METHOD §8) |
 | [scripts/hooks.mjs](scripts/hooks.mjs) | Runs Spec Kit extension hooks (`.specify/extensions.yml`) around each phase, Spec Kit rules, fail closed |
 | [scripts/run_phase.sh](scripts/run_phase.sh) | Implement → gate → retry (≤3) → review → verdict, fully unattended |
 | [scripts/author_tests.sh](scripts/author_tests.sh) | Test author session + red check + lock |

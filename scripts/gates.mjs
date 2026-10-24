@@ -58,9 +58,23 @@ function stopServer() {
 }
 process.on('exit', stopServer);
 
+const skippedConverge = [];
 const accFiles = (() => {
   const walk = (d) => !fs.existsSync(d) ? [] : fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
-  return walk(path.join(ROOT, cfg.acceptanceDir || 'tests/acceptance')).filter(f => new RegExp(`@spec\\s+${num}\\b`).test(fs.readFileSync(f, 'utf8')));
+  // Files tagged @converge document known spec/code gaps (they fail until fixed). They are required to pass
+  // only in a phase whose tasks cite one of their FRs; otherwise they are reported as skipped known gaps.
+  const phaseTasks = (fs.readFileSync(path.join(ROOT, specDir, 'tasks.md'), 'utf8').split(/^## /m)
+    .find(s => new RegExp(`^Phase ${phase}\\b`).test(s)) || '');
+  const phaseFRs = new Set(phaseTasks.match(/\bFR-\d{3}\b/g) || []);
+  return walk(path.join(ROOT, cfg.acceptanceDir || 'tests/acceptance')).filter(f => {
+    const t = fs.readFileSync(f, 'utf8');
+    if (!new RegExp(`@spec\\s+${num}\\b`).test(t)) return false;
+    if (!/@converge\b/.test(t)) return true;
+    const covers = (t.match(/@covers[^\n]*/) || [''])[0].match(/\bFR-\d{3}\b/g) || [];
+    if (covers.some(fr => phaseFRs.has(fr))) return true;
+    skippedConverge.push(path.relative(ROOT, f));
+    return false;
+  });
 })();
 const accCmd = accFiles.length ? accFiles.map(f => (cfg.acceptanceRun || 'node {FILE}').replace('{FILE}', JSON.stringify(path.relative(ROOT, f)))).join(' && ') : 'echo "no acceptance tests tagged @spec ' + num + '" && false';
 
@@ -82,7 +96,7 @@ const scopeOut = gates.find(g => g.name === 'scope').out;
 const highRisk = (scopeOut.match(/^HIGH_RISK (.*)$/m) || [])[1]?.split(' ') || [];
 const pass = gates.every(g => g.pass);
 const verdict = { feature: path.basename(specDir), phase: Number(phase), attempt: Number(attempt), pass, at: new Date().toISOString(),
-  gates: Object.fromEntries(gates.map(g => [g.name, { pass: g.pass, summary: g.summary }])), highRisk, escalate: false };
+  gates: Object.fromEntries(gates.map(g => [g.name, { pass: g.pass, summary: g.summary }])), highRisk, knownGapsSkipped: skippedConverge, escalate: false };
 fs.writeFileSync(path.join(outDir, `phase${phase}.verdict.json`), JSON.stringify(verdict, null, 2) + '\n');
 
 const trim = (s, n = 4000) => { const lines = s.split('\n'); const keep = lines.filter(l => markers.some(m => hit(l, m)) || /error|fail|expected|assert/i.test(l));

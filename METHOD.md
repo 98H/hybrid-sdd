@@ -171,6 +171,10 @@ The expensive model never reads the codebase; the same role split applies as for
    `author_tests.sh --retrofit` writes acceptance tests in an isolated worktree against the app served
    from that worktree — they must PASS on current code — and locks them; finally full coverage is
    checked. Status per feature: `.sdd/retrofit/NNN.status`. *(cheap model + scripts)*
+   Failed features: `scripts/fix_tests.sh specs/NNN-x <evidence logs>` — the cheap model repairs wrong
+   tests; where the code really violates an FR it moves that check into a `@converge` test that must fail
+   now (a documented gap) and prints `GAP:` lines. Plain tests must pass, coverage must be complete, then
+   lock. Gates skip `@converge` files except in the phase whose tasks fix those FRs. *(cheap model + scripts)*
 6. **Converge** — the architect reads the status files, the inventories' "Observed gaps" and the
    "Spec/code mismatches" in research.md, and appends a final *Converge* phase of `- [ ]` tasks.
    From now on every change goes through the normal loop; Converge tasks are the backlog.
