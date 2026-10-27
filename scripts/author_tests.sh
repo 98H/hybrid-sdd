@@ -12,7 +12,7 @@ MAIN=$(pwd); HERE=$(cd "$(dirname "$0")" && pwd); PROMPTS="$HERE/prompts"; [[ -d
 CFG="$MAIN/.sdd/config.json"
 jqr() { node -e "const c=require('$CFG');const v=$1;process.stdout.write(v==null?'':String(v))"; }
 CMD=$(jqr "c.agent.testAuthor"); TMO=$(jqr "(c.agent&&c.agent.timeoutSec)||3600"); ACC=$(jqr "c.acceptanceDir||'tests/acceptance'")
-SETUP=$(jqr "c.worktreeSetup||''"); SERVE=$(jqr "c.serve||''"); PORT=$(jqr "c.servePort||0"); READY=$(jqr "c.serveReadyPath||'/'"); STMO=$(jqr "c.serveTimeoutSec||60")
+SETUP=$(jqr "c.worktreeSetup||''"); SERVE=$(jqr "c.serve||''"); PORT=${SDD_PORT_OVERRIDE:-$(jqr "c.servePort||0")}; READY=$(jqr "c.serveReadyPath||'/'"); STMO=$(jqr "c.serveTimeoutSec||60")
 RUN=$(jqr "c.acceptanceRun||'node {FILE}'")
 FEAT=$(basename "$SPEC"); NUM=${FEAT%%-*}; BR="sdd/$NUM-tests"; WT="$MAIN/.sdd/worktrees/$NUM-tests"
 

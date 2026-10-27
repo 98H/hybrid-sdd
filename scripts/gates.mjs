@@ -21,7 +21,7 @@ const num = path.basename(specDir).slice(0, 3);
 const markers = cfg.failureMarkers || [];
 // A marker prefixed with "re:" is a regular expression; otherwise a literal substring.
 const hit = (txt, m) => m.startsWith('re:') ? new RegExp(m.slice(3), 'm').test(txt) : txt.includes(m);
-const port = cfg.servePort || 0;
+const port = Number(process.env.SDD_PORT_OVERRIDE) || cfg.servePort || 0; // override lets pipelines run in parallel
 const env = { ...process.env, ...(cfg.serve ? { SDD_PORT: String(port), SDD_BASE_URL: `http://127.0.0.1:${port}` } : {}) };
 
 function run(name, cmd, { markersApply = false, timeout = 1800 } = {}) {
