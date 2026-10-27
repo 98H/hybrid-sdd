@@ -58,17 +58,25 @@ function stopServer() {
 }
 process.on('exit', stopServer);
 
-const skippedConverge = [];
+const skippedConverge = [], deferred = [];
 const accFiles = (() => {
   const walk = (d) => !fs.existsSync(d) ? [] : fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
   // Files tagged @converge document known spec/code gaps (they fail until fixed). They are required to pass
   // only in a phase whose tasks cite one of their FRs; otherwise they are reported as skipped known gaps.
-  const phaseTasks = (fs.readFileSync(path.join(ROOT, specDir, 'tasks.md'), 'utf8').split(/^## /m)
-    .find(s => new RegExp(`^Phase ${phase}\\b`).test(s)) || '');
+  const sections = fs.readFileSync(path.join(ROOT, specDir, 'tasks.md'), 'utf8').split(/^## /m);
+  const phaseTasks = (sections.find(s => new RegExp(`^Phase ${phase}\\b`).test(s)) || '');
   const phaseFRs = new Set(phaseTasks.match(/\bFR-\d{3}\b/g) || []);
+  // Phase-scoped acceptance: a test file is required once every FR it covers is delivered by a phase <= this
+  // one (FR -> latest phase whose tasks cite it). The last phase and --final run every file.
+  const frPhase = {}; let maxPhase = 0;
+  for (const s of sections) { const m = s.match(/^Phase (\d+)\b/); if (!m) continue; const n = +m[1]; maxPhase = Math.max(maxPhase, n);
+    for (const fr of s.match(/\bFR-\d{3}\b/g) || []) frPhase[fr] = Math.max(frPhase[fr] || 0, n); }
+  const all = FINAL || Number(phase) >= maxPhase;
   return walk(path.join(ROOT, cfg.acceptanceDir || 'tests/acceptance')).filter(f => {
     const t = fs.readFileSync(f, 'utf8');
     if (!new RegExp(`@spec\\s+${num}\\b`).test(t)) return false;
+    const fileFRs = (t.match(/@covers[^\n]*/) || [''])[0].match(/\bFR-\d{3}\b/g) || [];
+    if (!all && fileFRs.some(fr => (frPhase[fr] ?? Infinity) > Number(phase))) { deferred.push(path.relative(ROOT, f)); return false; }
     if (!/@converge\b/.test(t)) return true;
     const covers = (t.match(/@covers[^\n]*/) || [''])[0].match(/\bFR-\d{3}\b/g) || [];
     if (covers.some(fr => phaseFRs.has(fr))) return true;
@@ -76,7 +84,8 @@ const accFiles = (() => {
     return false;
   });
 })();
-const accCmd = accFiles.length ? accFiles.map(f => (cfg.acceptanceRun || 'node {FILE}').replace('{FILE}', JSON.stringify(path.relative(ROOT, f)))).join(' && ') : 'echo "no acceptance tests tagged @spec ' + num + '" && false';
+const accCmd = accFiles.length ? accFiles.map(f => (cfg.acceptanceRun || 'node {FILE}').replace('{FILE}', JSON.stringify(path.relative(ROOT, f)))).join(' && ')
+  : deferred.length ? `echo "all ${deferred.length} acceptance file(s) cover FRs of later phases — deferred"` : 'echo "no acceptance tests tagged @spec ' + num + '" && false';
 
 const gates = [
   run('lock', node('lock_tests.mjs', `check ${specDir}`)),
@@ -96,7 +105,7 @@ const scopeOut = gates.find(g => g.name === 'scope').out;
 const highRisk = (scopeOut.match(/^HIGH_RISK (.*)$/m) || [])[1]?.split(' ') || [];
 const pass = gates.every(g => g.pass);
 const verdict = { feature: path.basename(specDir), phase: Number(phase), attempt: Number(attempt), pass, at: new Date().toISOString(),
-  gates: Object.fromEntries(gates.map(g => [g.name, { pass: g.pass, summary: g.summary }])), highRisk, knownGapsSkipped: skippedConverge, escalate: false };
+  gates: Object.fromEntries(gates.map(g => [g.name, { pass: g.pass, summary: g.summary }])), highRisk, knownGapsSkipped: skippedConverge, deferredToLaterPhase: deferred, escalate: false };
 fs.writeFileSync(path.join(outDir, `phase${phase}.verdict.json`), JSON.stringify(verdict, null, 2) + '\n');
 
 const trim = (s, n = 4000) => { const lines = s.split('\n'); const keep = lines.filter(l => markers.some(m => hit(l, m)) || /error|fail|expected|assert/i.test(l));

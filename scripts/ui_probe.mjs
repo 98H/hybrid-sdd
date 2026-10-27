@@ -33,6 +33,8 @@ let browser;
 try { browser = await puppeteer.launch({ executablePath: cfg.chromePath, headless: 'new', userDataDir: profile, args: ['--no-sandbox', '--disable-dev-shm-usage'] }); }
 catch (e) { console.log(`UI PROBE FAIL: browser launch failed: ${String(e).slice(0, 200)}`); fs.rmSync(profile, { recursive: true, force: true }); process.exit(1); }
 const results = []; let defects = 0;
+let knownTotal = 0;
+const baseline = cfg.baseline && fs.existsSync(path.join(ROOT, cfg.baseline)) ? JSON.parse(fs.readFileSync(path.join(ROOT, cfg.baseline), 'utf8')) : null;
 try {
   for (const vp of cfg.viewports) for (const loc of cfg.locales) for (const pg of cfg.pages) {
     const page = await browser.newPage();
@@ -70,15 +72,22 @@ try {
       return res;
     }, cfg.interactiveSelector, cfg.minTouchTarget || 44, !!vp.mobile, cfg.untranslatedPattern || '');
     r.consoleErr = consoleErr.slice(0, 10);
-    const n = Object.values(r).reduce((s, v) => s + v.length, 0); defects += n;
-    results.push({ page: pg, viewport: vp.name, locale: loc.name, defects: n, ...r });
+    // Baseline (cfg.baseline = earlier ui_probe.json of the product before this work): only NEW defects fail.
+    // Digits are normalised so live numbers (prices, clocks) do not make a known defect look new.
+    const norm = (x) => x.replace(/[0-9\u06F0-\u06F9][0-9\u06F0-\u06F9,.]*/g, '#');
+    const base = baseline && baseline.results.find(b => b.page === pg && b.viewport === vp.name && b.locale === loc.name);
+    let known = 0;
+    if (base) for (const k of Object.keys(r)) { if (k === 'consoleErr' && !Array.isArray(base[k])) continue;
+      const seen = new Set((base[k] || []).map(norm)); const before = r[k].length; r[k] = r[k].filter(x => !seen.has(norm(x))); known += before - r[k].length; }
+    const n = Object.values(r).reduce((s, v) => s + v.length, 0); defects += n; knownTotal += known;
+    results.push({ page: pg, viewport: vp.name, locale: loc.name, defects: n, knownBaselineDefects: known, ...r });
     await page.close();
   }
 } catch (e) { console.log(`UI PROBE FAIL: ${String(e).slice(0, 300)}`); await browser.close(); fs.rmSync(profile, { recursive: true, force: true }); process.exit(1); }
 finally { await browser.close().catch(() => {}); fs.rmSync(profile, { recursive: true, force: true }); }
 fs.mkdirSync(out, { recursive: true });
-fs.writeFileSync(path.join(out, 'ui_probe.json'), JSON.stringify({ defects, results }, null, 2));
+fs.writeFileSync(path.join(out, 'ui_probe.json'), JSON.stringify({ defects, knownBaselineDefects: knownTotal, baseline: cfg.baseline || null, results }, null, 2));
 for (const r of results) console.log(`${r.defects ? 'FAIL' : 'PASS'} ${r.page} ${r.viewport}/${r.locale} defects=${r.defects}` +
   (r.defects ? '\n' + ['overflow', 'covered', 'tinyTarget', 'untranslated', 'clipped', 'consoleErr'].filter(k => r[k].length).map(k => `   ${k}: ${r[k].slice(0, 6).join(' | ')}`).join('\n') : ''));
-console.log(`UI PROBE ${defects ? 'FAIL' : 'OK'} defects=${defects}`);
+console.log(`UI PROBE ${defects ? 'FAIL' : 'OK'} defects=${defects}${baseline ? ` (new vs baseline ${cfg.baseline}; known baseline defects still present=${knownTotal})` : ''}`);
 process.exit(defects ? 1 : 0);
