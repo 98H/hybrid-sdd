@@ -100,7 +100,7 @@ uncertainty. The architect reads `verdict.json` + `feedback.md` (small files), d
 unless the path is high-risk.
 
 ### Phase G — Ship
-Each PASS leaves branch `sdd/NNN-phaseN` ready; merge it into the base branch before the next phase
+Each PASS leaves branch `sdd/NNN-phaseN` ready; merge it with `scripts/merge_phase.sh specs/NNN-x N` before the next phase
 (the next phase's worktree starts from the base). All phases PASS → `verify_specs.mjs` passes → full regression gate → merge → deploy → report to the
 founder with the verdict files as evidence.
 
