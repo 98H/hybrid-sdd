@@ -100,11 +100,22 @@ for ((a=1; a<=MAX; a++)); do
   log "attempt $a/$MAX: implementer"
   implement "$a"
   git add -A && git commit -qm "sdd($FEAT): phase $PHASE attempt $a" --allow-empty
+  # Overlap: the diff is final once the attempt is committed, so the reviewer starts as soon as every gate
+  # except the slow regression gate has passed (gates.mjs runs SDD_PRE_PASS_HOOK), and works while
+  # regression runs. Same reviewer, same prompt, same diff; it never starts when an earlier gate failed.
+  git diff "$BASE"...HEAD -- . ":(exclude)$SPEC/.sdd" >"$OUT/phase$PHASE.diff"
+  rm -f "$OUT/phase$PHASE.review.md" "$OUT/phase$PHASE.review.done" "$OUT/phase$PHASE.prehook.started"
+  RPROMPT=$(render "$PROMPTS/reviewer.md" "$a")
+  RCMD=${REV//\{PROMPT_FILE\}/$RPROMPT}
+  export SDD_PRE_PASS_HOOK="timeout $TMO bash -lc $(printf '%q' "$RCMD") >$(printf '%q' "$OUT/phase$PHASE.review.md") 2>&1; echo \$? >>$(printf '%q' "$OUT/phase$PHASE.review.md"); touch $(printf '%q' "$OUT/phase$PHASE.review.done")"
   log "attempt $a: gates"
-  if node "$HERE/gates.mjs" "$SPEC" "$PHASE" "$a" $FINAL >"$OUT/gates.p$PHASE.a$a.log" 2>&1; then
-    log "attempt $a: gates PASS → reviewer"
-    git diff "$BASE"...HEAD -- . ":(exclude)$SPEC/.sdd" >"$OUT/phase$PHASE.diff"
-    agent "$REV" "$(render "$PROMPTS/reviewer.md" "$a")" "$OUT/phase$PHASE.review.md"
+  node "$HERE/gates.mjs" "$SPEC" "$PHASE" "$a" $FINAL >"$OUT/gates.p$PHASE.a$a.log" 2>&1; GRC=$?
+  unset SDD_PRE_PASS_HOOK
+  RPID=$(cat "$OUT/phase$PHASE.prehook.started" 2>/dev/null)
+  if [[ $GRC == 0 ]]; then
+    if [[ -n $RPID ]]; then log "attempt $a: gates PASS → reviewer (started before regression)"
+      while [[ ! -f $OUT/phase$PHASE.review.done ]] && kill -0 "$RPID" 2>/dev/null; do sleep 5; done
+    else log "attempt $a: gates PASS → reviewer"; agent "$REV" "$RPROMPT" "$OUT/phase$PHASE.review.md"; fi
     if grep -q '^VERDICT: PASS' "$OUT/phase$PHASE.review.md"; then
       node -e '
         const fs=require("fs"),[spec,phase]=process.argv.slice(1);const p=spec+"/tasks.md";let inP=false;
@@ -121,6 +132,11 @@ for ((a=1; a<=MAX; a++)); do
     log "attempt $a: reviewer FAIL"
   else
     log "attempt $a: gates FAIL ($(grep -c '^FAIL' "$OUT/gates.p$PHASE.a$a.log") gate(s))"
+    if [[ -n $RPID ]]; then # only regression failed: if the reviewer already finished, feed its findings back too
+      if [[ -f $OUT/phase$PHASE.review.done ]] && grep -q '^VERDICT: FAIL' "$OUT/phase$PHASE.review.md"; then
+        { echo; echo "## FAIL reviewer — checklist violations"; sed -n '/^VERDICT/,$p' "$OUT/phase$PHASE.review.md"; } >>"$OUT/phase$PHASE.feedback.md"
+      else kill -- -"$RPID" 2>/dev/null; fi   # stop a reviewer whose verdict can no longer matter (saves tokens)
+    fi
   fi
   grep -q '^SPEC_PROBLEM:' "$OUT/impl.p$PHASE.a$a.log" && escalate "implementer reports a spec problem: $(grep -m1 '^SPEC_PROBLEM:' "$OUT/impl.p$PHASE.a$a.log")"
 done

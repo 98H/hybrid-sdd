@@ -198,3 +198,43 @@ must stay green.
 - The cheap model may game gates within the fence (e.g. special-casing test inputs). The reviewer's
   checklist MUST include "no test-specific branches in product code"; high-risk paths get the
   architect's review.
+
+## 11. Time optimisation (wall-clock, without more tokens or weaker gates)
+
+Measured on a real product (2026-10-31, 3 vCPU VPS): one implementer attempt ≈ 10–40 min, gates ≈ 25–40 min
+(acceptance files run one after another, then a regression suite), reviewer ≈ 5–15 min. Model tokens are
+spent only by the implementer and the reviewer, so wall-clock is cut **only where no model runs**, and
+never by skipping a check that decides PASS.
+
+| # | Rule | Where | Saves | Quality / cost impact |
+|---|---|---|---|---|
+| T1 | **Fail fast.** Lock or scope FAIL → build, unit, serve, acceptance, regression are reported `not run`. Build FAIL → nothing after it runs. | `gates.mjs` | the whole remaining gate time on doomed attempts | none: the attempt fails either way; the feedback names the real cause first |
+| T2 | **Regression only when everything before it passed.** An attempt that already failed does not run the slow regression; the next attempt runs it. | `gates.mjs` | 5–10 min per failed attempt | none: a PASS still requires a green regression |
+| T3 | **Acceptance lanes.** `acceptanceLanes` groups files that share a rate limit, port range or the served app's mutable state; lanes run concurrently up to `acceptanceParallel`; files inside a lane stay sequential. Same pass rule per file (exit 0, no timeout, no failure marker). | `gates.mjs`, `.sdd/config.json` | acceptance time ÷ lanes (≈ 2–3× on 3 cores) | none if lanes are correct; one lane = old behaviour. Size by CPU/RAM (browser tests ≈ 250 MB each) |
+| T4 | **Reviewer overlaps regression.** The diff is final once the attempt is committed, so the reviewer starts when every gate before regression passed (`SDD_PRE_PASS_HOOK`) and works while regression runs. PASS still needs regression green AND reviewer `VERDICT: PASS`. If regression fails, a finished FAIL review is added to the feedback; an unfinished one is killed. | `run_phase.sh` | reviewer time (5–15 min) per passing attempt | tokens: equal on PASS; on a regression failure at most one partial review is spent, but its findings reach the next attempt, often saving one attempt |
+| T5 | **Timing in every verdict.** Each gate records `sec`; the verdict records `totalSec`. The architect tunes lanes from data, not guesses. | `gates.mjs` | — | none |
+| T6 | **Architect works while machines work.** While an implementer or the gates run, the architect reviews the next area against real sources and prepares the next FR + locked test (after the current phase merges, as before). Never idle after a report: report and start the next step in the same turn. | process | hours per day | none (same Opus work, just earlier) |
+| T7 | **Contradiction check before locking.** Before locking a test for a new FR that adds caching, de-duplication, rate limiting or timing, grep the locked tests that count upstream calls or inject consecutive faults; amend them (architect commit) in the same change. | process | a full 3-attempt escalation (observed: 4 h) | none |
+| T8 | **Re-gate before re-running a phase.** When an escalation was caused by a test (not code), fix the test, merge base into the phase branch and run `gates.mjs` alone on the existing code first; spend a new implementer run only if that fails. | process | one implementer run | saves tokens |
+| T9 | **Red-check sandbox.** A test that spawns other test files is red-checked with a preload that blocks the production port. A red run must never touch production. | process | cleanup time | prevents data damage |
+
+Not done on purpose (would trade quality or cost for time): fewer attempts, a weaker implementer reasoning
+level, skipping the reviewer or the regression, running gates against production, parallel implementer
+sessions for tasks that share files, and splitting one implementer attempt across several cheap sessions
+when the phase is not `[P]`-parallel.
+
+Configuration (`.sdd/config.json`):
+
+```json
+"acceptanceParallel": 3,
+"acceptanceTimeoutSec": 1800,
+"acceptanceLanes": [
+  { "name": "browser",   "match": "/0(1[3-9]|2\\d)_.*\\.test\\.cjs$" },
+  { "name": "upstream",  "match": "/(0[1-8])_.*\\.test\\.cjs$" }
+]
+```
+`{LANE}` in `acceptanceRun` is replaced by the lane name, e.g. `flock /run/lock/qa-{LANE}.lock node {FILE}`
+(keep a global lock only for suites that really share one resource).
+
+Proof: `tests/selftest_speed.sh` (lanes concurrent, lane-internal order, failure in any lane fails, fail fast,
+regression skipped only after an earlier failure, reviewer overlap, reviewer FAIL and regression FAIL still block).
